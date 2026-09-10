@@ -1,10 +1,48 @@
-# 运行时数据与虚拟环境
+# ---- 运行时数据与虚拟环境 ----
 data/
 .venv/
+venv/
+env/
+
+# ---- Python ----
 __pycache__/
-*.pyc
-.pytest_cache/
+*.py[cod]
+*$py.class
 *.egg-info/
-dist/
+.eggs/
 build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 注意：conflex/resources/web_dist 是随包分发的前端产物，目录名不是 dist/，不受上面规则影响
+
+# ---- Node / 前端 ----
+node_modules/
+web/dist/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---- 配置与密钥 ----
 conflex.yaml
+.env
+.env.*
+
+# ---- 日志与临时文件 ----
+*.log
+*.tmp
+
+# ---- IDE / 编辑器 ----
+.idea/
+.vscode/
+*.swp
+*~
+
+# ---- 操作系统 ----
+.DS_Store
+Thumbs.db

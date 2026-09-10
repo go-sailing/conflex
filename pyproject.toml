@@ -30,6 +30,9 @@ builtins = "conflex.domain.factors.builtin"
 [tool.setuptools.packages.find]
 include = ["conflex*"]
 
+[tool.setuptools.package-data]
+"conflex.resources" = ["web_dist/**/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
