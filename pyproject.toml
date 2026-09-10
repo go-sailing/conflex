@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "conflex"
+version = "0.1.0"
+description = "Conflex 多因子量化选股系统（数据代理/因子引擎/模拟持仓/回测/Web 后台）"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "pyarrow>=14.0",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+web = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "httpx>=0.26"]
+cli = ["typer>=0.12"]
+tushare = ["tushare>=1.4"]
+akshare = ["akshare>=1.12"]
+dev = ["pytest>=8.0", "httpx>=0.26", "typer>=0.12", "fastapi>=0.110", "uvicorn[standard]>=0.27"]
+
+[project.scripts]
+conflex = "conflex.entrypoints.cli:main"
+
+[project.entry-points."conflex.factors"]
+builtins = "conflex.domain.factors.builtin"
+
+[tool.setuptools.packages.find]
+include = ["conflex*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
