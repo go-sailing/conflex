@@ -9,8 +9,11 @@ from conflex.application.market_service import MarketService
 from conflex.application.paper_service import PaperService
 from conflex.application.selection_service import SelectionService
 from conflex.infra.datasources.akshare_source import AkshareDataSource
+from conflex.infra.datasources.baostock_source import BaostockDataSource
+from conflex.infra.datasources.efinance_source import EfinanceDataSource
 from conflex.infra.datasources.proxy import MarketDataProxy
-from conflex.infra.datasources.synthetic import SyntheticDataSource
+from conflex.infra.datasources.sina_source import SinaDataSource
+from conflex.infra.datasources.tencent_source import TencentDataSource
 from conflex.infra.datasources.tushare_source import TushareDataSource
 from conflex.infra.db.database import Database
 from conflex.infra.db.repositories.market import MarketRepository
@@ -19,14 +22,15 @@ from conflex.infra.db.repositories.trading import TradingRepository
 
 
 class Container:
-    def __init__(self, settings: Settings | None = None, config_file: str | None = None):
+    def __init__(self, settings: Settings | None = None, config_file: str | None = None,
+                 adapters: list[tuple[DataSourceCfg, object]] | None = None):
         self.settings = settings or load_settings(config_file)
         self.db = Database(self.settings.db_path)
         self.market_repo = MarketRepository(self.db, self.settings.market_dir)
         self.trading_repo = TradingRepository(self.db)
         self.system_repo = SystemRepository(self.db)
 
-        adapters = self._build_sources()
+        adapters = adapters if adapters is not None else self._build_sources()
         self._register_source_stats(adapters)
         self.proxy = MarketDataProxy(
             adapters, self.market_repo, self.system_repo,
@@ -55,13 +59,16 @@ class Container:
                     out.append((cfg, TushareDataSource(token=token)))
                 elif cfg.name == "akshare":
                     out.append((cfg, AkshareDataSource()))
-                elif cfg.name == "synthetic":
-                    out.append((cfg, SyntheticDataSource()))
+                elif cfg.name == "baostock":
+                    out.append((cfg, BaostockDataSource()))
+                elif cfg.name == "efinance":
+                    out.append((cfg, EfinanceDataSource()))
+                elif cfg.name == "tencent":
+                    out.append((cfg, TencentDataSource()))
+                elif cfg.name == "sina":
+                    out.append((cfg, SinaDataSource()))
             except Exception:  # noqa: BLE001 适配器不可用则跳过
                 continue
-        if not any(cfg.name == "synthetic" for cfg, _ in out):
-            cfg = DataSourceCfg("synthetic", enabled=True, priority=99, qps=100)
-            out.append((cfg, SyntheticDataSource()))
         return out
 
     def _register_source_stats(self, adapters):

@@ -13,8 +13,9 @@ export const dataApi = {
   testSource: (name: string) => http.post(`/data-sources/${name}/test`),
   bootstrap: () => http.post('/data/bootstrap'),
   createJob: (body: Record<string, any>) => http.post('/data/jobs', body),
-  coverage: () => http.get('/cache/coverage'),
+  coverage: (params?: Record<string, any>) => http.get('/cache/coverage', { params }),
   bars: (params: Record<string, any>) => http.get('/market/bars', { params }),
+  universes: () => http.get('/universes'),
 }
 
 export const factorApi = {

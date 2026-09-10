@@ -97,6 +97,21 @@ class MarketRepository:
         return [dict(r) for r in self.db.query(
             "SELECT symbol,start_date,end_date,is_final,source,updated_at FROM cache_meta ORDER BY symbol")]
 
+    def coverage_rows_page(self, page: int = 1, size: int = 50, keyword: str = "") -> tuple[list[dict], int]:
+        where = ""
+        params: list = []
+        if keyword:
+            where = "WHERE symbol LIKE ?"
+            params.append(f"%{keyword}%")
+        total = self.db.query_one(
+            f"SELECT COUNT(*) as cnt FROM cache_meta {where}", tuple(params))["cnt"]
+        offset = (page - 1) * size
+        rows = [dict(r) for r in self.db.query(
+            f"SELECT symbol,start_date,end_date,is_final,source,updated_at "
+            f"FROM cache_meta {where} ORDER BY symbol LIMIT ? OFFSET ?",
+            tuple(params) + (size, offset))]
+        return rows, total
+
     def symbols_on_disk(self) -> list[str]:
         return self.store.symbols()
 
@@ -137,6 +152,54 @@ class MarketRepository:
             "SELECT symbol FROM instrument WHERE list_date<=? AND (delist_date IS NULL OR delist_date>?)",
             (day.isoformat(), day.isoformat()),
         )
+        return [r["symbol"] for r in rows]
+
+    # ---- 股票池 ----
+    UNIVERSES: dict[str, str] = {
+        "all": "全部A股",
+        "hs300": "沪深300",
+        "zz500": "中证500",
+        "zz1000": "中证1000",
+        "star": "科创板",
+        "chinext": "创业板",
+        "main": "主板",
+    }
+
+    def resolve_universe(self, name: str, day: date | None = None) -> list[str]:
+        """根据预定义池或代码前缀返回股票列表。"""
+        day = day or date.today()
+        base_sql = "SELECT symbol FROM instrument WHERE list_date<=? AND (delist_date IS NULL OR delist_date>?)"
+        params: list = [day.isoformat(), day.isoformat()]
+
+        if name == "all":
+            rows = self.db.query(base_sql, tuple(params))
+        elif name == "hs300":
+            rows = self.db.query(
+                base_sql + " AND symbol LIKE '6%' OR symbol LIKE '000%' OR symbol LIKE '300%'",
+                tuple(params),
+            )
+        elif name == "zz500":
+            rows = self.db.query(
+                base_sql + " AND (symbol LIKE '002%' OR symbol LIKE '300%' OR symbol LIKE '60%')",
+                tuple(params),
+            )
+        elif name == "zz1000":
+            rows = self.db.query(
+                base_sql + " AND (symbol LIKE '002%' OR symbol LIKE '300%' OR symbol LIKE '301%' "
+                "OR symbol LIKE '600%' OR symbol LIKE '601%' OR symbol LIKE '603%')",
+                tuple(params),
+            )
+        elif name == "star":
+            rows = self.db.query(base_sql + " AND (symbol LIKE '688%' OR symbol LIKE '689%')", tuple(params))
+        elif name == "chinext":
+            rows = self.db.query(base_sql + " AND (symbol LIKE '300%' OR symbol LIKE '301%')", tuple(params))
+        elif name == "main":
+            rows = self.db.query(
+                base_sql + " AND (symbol LIKE '60%' OR symbol LIKE '000%' OR symbol LIKE '001%')",
+                tuple(params),
+            )
+        else:
+            rows = self.db.query(base_sql, tuple(params))
         return [r["symbol"] for r in rows]
 
     # ---- calendar ----

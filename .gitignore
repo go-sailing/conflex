@@ -1,5 +1,5 @@
 # ---- 运行时数据与虚拟环境 ----
-data/
+/data/
 .venv/
 venv/
 env/

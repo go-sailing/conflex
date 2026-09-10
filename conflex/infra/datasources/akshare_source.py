@@ -1,10 +1,11 @@
 """AKShare 适配器（可选依赖，免费源）。"""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 import pandas as pd
 
+from conflex.domain.models import Instrument
 from conflex.infra.datasources.base import BaseDataSource, guarded
 
 
@@ -39,7 +40,37 @@ class AkshareDataSource(BaseDataSource):
         df["trade_date"] = pd.to_datetime(df["trade_date"])
         df["symbol"] = symbol
         return df[["symbol", "trade_date", "open", "high", "low", "close",
-                   "volume", "amount", "turnover"]]
+                    "volume", "amount", "turnover"]]
+
+    def fetch_instruments(self) -> list[Instrument]:
+        try:
+            import akshare as ak  # noqa
+        except ImportError:
+            return []
+        df = ak.stock_info_a_code_name()
+        if df is None or df.empty:
+            return []
+        out = []
+        for _, r in df.iterrows():
+            code = str(r["code"])
+            symbol = f"{code}.SH" if code.startswith(("6", "9")) else f"{code}.SZ"
+            exchange = "SH" if code.startswith(("6", "9")) else "SZ"
+            board = ("star" if code.startswith(("688", "689"))
+                     else "chinext" if code.startswith(("300", "301")) else "main")
+            out.append(Instrument(symbol=symbol, name=r["name"], exchange=exchange,
+                                  board=board, list_date=date(2010, 1, 1)))
+        return out
+
+    def fetch_calendar(self, start: date, end: date) -> list[date]:
+        try:
+            import akshare as ak  # noqa
+        except ImportError:
+            return []
+        df = ak.tool_trade_date_hist_sina()
+        if df is None or df.empty:
+            return []
+        dates = pd.to_datetime(df["trade_date"]).dt.date
+        return [d for d in dates if start <= d <= end]
 
     def health_check(self) -> bool:
         try:

@@ -22,11 +22,13 @@ class MarketService:
     # ---- 异步任务 ----
     def submit_update(self, symbols: list[str] | None = None,
                       start: date | None = None, end: date | None = None,
-                      created_by: int | None = None) -> int:
-        params = {"symbols": symbols, "start": str(start) if start else None,
+                      created_by: int | None = None, universe: str | None = None) -> int:
+        params = {"symbols": symbols, "universe": universe,
+                  "start": str(start) if start else None,
                   "end": str(end) if end else None}
         return self.jobs.submit("data_update", params,
-                                lambda ctx: self._run(ctx, symbols, start, end), created_by)
+                                lambda ctx: self._run(ctx, symbols, start, end, universe),
+                                created_by)
 
     def submit_repair(self, symbol: str, start: date, end: date,
                       created_by: int | None = None) -> int:
@@ -34,11 +36,17 @@ class MarketService:
         return self.jobs.submit("data_repair", params,
                                 lambda ctx: self._repair(ctx, symbol, start, end), created_by)
 
-    def _run(self, ctx, symbols, start, end) -> dict:
+    def _run(self, ctx, symbols, start, end, universe=None) -> dict:
         if not self.repo.load_instruments():
             ctx.log("证券列表为空，先执行数据源引导…")
             self.bootstrap()
-        symbols = symbols or self.listed_symbols()
+        if symbols:
+            pass
+        elif universe and universe != "all":
+            symbols = self.repo.resolve_universe(universe)
+            ctx.log(f"股票池 [{self.repo.UNIVERSES.get(universe, universe)}]：{len(symbols)} 只")
+        else:
+            symbols = self.listed_symbols()
         ctx.log(f"待更新股票 {len(symbols)} 只")
 
         def cb(done, total, sym):

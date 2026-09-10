@@ -93,14 +93,17 @@ class Settings:
 
 def _default_sources() -> list[DataSourceCfg]:
     return [
-        DataSourceCfg("tushare", enabled=True, priority=1, token_env="TUSHARE_TOKEN", qps=3),
-        DataSourceCfg("akshare", enabled=True, priority=2, qps=1),
-        DataSourceCfg("synthetic", enabled=True, priority=99, qps=100),
+        DataSourceCfg("tencent", enabled=True, priority=1, qps=1),
+        DataSourceCfg("sina", enabled=True, priority=2, qps=1),
+        DataSourceCfg("tushare", enabled=True, priority=3, token_env="TUSHARE_TOKEN", qps=3),
+        DataSourceCfg("akshare", enabled=True, priority=4, qps=1),
+        DataSourceCfg("baostock", enabled=True, priority=5, qps=1),
+        DataSourceCfg("efinance", enabled=True, priority=6, qps=1),
     ]
 
 
 def load_settings(config_file: str | None = None) -> Settings:
-    """加载配置；synthetic 为离线演示/测试兜底源（始终最低优先级）。"""
+    """加载配置。"""
     raw: dict = {}
     for candidate in (config_file, "conflex.yaml", str(Path.home() / ".conflex" / "conflex.yaml")):
         if candidate and Path(candidate).exists() and yaml:
@@ -110,9 +113,6 @@ def load_settings(config_file: str | None = None) -> Settings:
     sources = [DataSourceCfg(**s) for s in raw.get("datasources", [])]
     if not sources:
         sources = _default_sources()
-    # synthetic 兜底源永远存在且优先级最低
-    if not any(s.name == "synthetic" for s in sources):
-        sources.append(DataSourceCfg("synthetic", enabled=True, priority=99, qps=100))
 
     flat = {
         "data_dir": raw.get("data", {}).get("dir", "./data"),

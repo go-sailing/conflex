@@ -19,6 +19,8 @@ web = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "httpx>=0.26"]
 cli = ["typer>=0.12"]
 tushare = ["tushare>=1.4"]
 akshare = ["akshare>=1.12"]
+baostock = ["baostock>=0.8.8"]
+efinance = ["efinance>=1.5.6"]
 dev = ["pytest>=8.0", "httpx>=0.26", "typer>=0.12", "fastapi>=0.110", "uvicorn[standard]>=0.27"]
 
 [project.scripts]

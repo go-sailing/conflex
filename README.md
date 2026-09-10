@@ -14,11 +14,11 @@
 
 | 模块 | 能力 |
 | --- | --- |
-| 行情数据获取代理 | Tushare / AKShare / synthetic（离线演示源）多源接入，优先级轮换、指数退避、熔断、令牌桶限频、并发请求去重；Parquet 按 `股票/年` 分区缓存，封闭数据（is_final）命中即零联网；原始价与复权因子分离存储，复权视图动态计算 |
+| 行情数据获取代理 | Tencent / Sina / Tushare / AKShare / BaoStock / EFinance 六源接入，优先级轮换、指数退避、熔断、令牌桶限频、并发请求去重；Parquet 按 `股票/年` 分区缓存，封闭数据（is_final）命中即零联网；原始价与复权因子分离存储，复权视图动态计算 |
 | 多因子分析引擎 | 7 个内置因子（动量/反转/波动率/成交额/换手率/RSI/振幅），MAD 去极值、Z-Score 标准化、行业市值中性化；IC 时序、ICIR、胜率、分层收益；等权/IC 加权合成与 Top N 选股 |
 | 模拟持仓管理 | 多账户、资金冻结/解冻、订单状态机、次日开盘撮合（涨停买不进/跌停卖不出/停牌拒单）、目标持仓差价单调仓、盘后盯市与净值快照 |
 | 回测引擎 | 逐日事件循环（T 日信号、T+1 成交）、Point-in-time 股票池、夏普/索提诺/卡玛/最大回撤/信息比率/换手率指标、结果落库可复现 |
-| Web 管理后台 | 仪表盘、数据源管理、更新任务、缓存 K 线浏览、因子库/分析/选股榜、策略 CRUD、模拟交易、回测新建与报告、任务管理、操作日志 |
+| Web 管理后台 | 仪表盘、数据源管理、更新任务（支持按股票池批量更新）、缓存 K 线浏览（分页搜索）、因子库/分析/选股榜、策略 CRUD、模拟交易、回测新建与报告、任务管理、操作日志 |
 
 ## 系统架构
 
@@ -29,7 +29,7 @@
 应用层  MarketService / FactorService / SelectionService
         PaperService / BacktestService / JobManager(SSE)
 领域层  marketdata / factors / portfolio / backtest（纯逻辑，无 IO）
-基础设施 Tushare·AKShare·synthetic 适配器 / Parquet / SQLite / 安全(JWT)
+基础设施 Tencent·Sina·Tushare·AKShare·BaoStock·EFinance 适配器 / Parquet / SQLite / 安全(JWT)
 ```
 
 详细设计见 [产品设计文档](docs/多因子量化选股系统产品设计文档.md) 与 [软件设计文档](docs/多因子量化选股系统软件设计文档.md)。
@@ -67,14 +67,12 @@ source .venv/bin/activate
 pip install -e ".[web,cli,dev]"
 ```
 
-可选数据源依赖：
+可选数据源依赖（Tencent / Sina 无需额外安装，开箱即用）：
 
 ```bash
-pip install -e ".[tushare]"   # 或 [akshare]
+pip install -e ".[tushare]"   # 或 [akshare] [baostock] [efinance]
 export TUSHARE_TOKEN=xxxxxx   # 密钥只走环境变量，不写入配置文件
 ```
-
-未配置真实数据源时，系统使用内置 `synthetic` 确定性随机游走源（20 只演示股票），可完整体验全部功能与离线测试。
 
 ### 2. 启动 Web 管理后台
 
@@ -102,6 +100,19 @@ conflex paper create demo                # 模拟账户
 conflex backtest run --factors price_mom_20,price_rev_20 \
     --start 2022-03-01 --end 2024-12-31 --top 5 --rebalance M
 ```
+
+## 数据源
+
+| 优先级 | 数据源 | 类型 | 说明 |
+|--------|--------|------|------|
+| 1 | Tencent | HTTP API | 腾讯财经，免费，无需安装额外包 |
+| 2 | Sina | HTTP API | 新浪财经，免费，无需安装额外包 |
+| 3 | Tushare | SDK | 需注册获取 token |
+| 4 | AKShare | SDK | 免费，支持引导（证券列表+交易日历） |
+| 5 | BaoStock | SDK | 免费，支持引导 |
+| 6 | EFinance | SDK | 东方财富，免费 |
+
+数据源自动故障轮换：当高优先级源失败时，自动降级到下一个可用源。
 
 ## 前端开发
 
@@ -149,4 +160,4 @@ pytest                    # 16 个用例：因子数值、T+1/费用、多源轮
 
 ## 免责声明
 
-本项目仅用于量化技术研究与教学，内置 synthetic 数据为随机生成的演示数据，不代表任何真实证券；回测收益不预示未来表现，使用者需自行承担研究与交易风险。
+本项目仅用于量化技术研究与教学，回测收益不预示未来表现，使用者需自行承担研究与交易风险。

@@ -16,6 +16,7 @@ class UpdateIn(BaseModel):
     type: str = "update"           # update / repair
     symbols: list[str] | None = None
     symbol: str | None = None
+    universe: str | None = None    # all / hs300 / zz500 / zz1000 / star / chinext / main
     start: str | None = None
     end: str | None = None
 
@@ -27,6 +28,11 @@ def _d(s: str | None):
 @router.get("/data-sources")
 def list_sources(container=Depends(get_container), user=Depends(require_admin)):
     return container.market_service.source_stats()
+
+
+@router.get("/universes")
+def list_universes(container=Depends(get_container), user=Depends(require_admin)):
+    return [{"key": k, "name": v} for k, v in container.market_repo.UNIVERSES.items()]
 
 
 @router.post("/data-sources/{name}/test")
@@ -50,7 +56,7 @@ def create_data_job(body: UpdateIn, request: Request, container=Depends(get_cont
             body.symbol, _d(body.start), _d(body.end) or date.today(), user["id"])
     else:
         job_id = container.market_service.submit_update(
-            body.symbols, _d(body.start), _d(body.end), user["id"])
+            body.symbols, _d(body.start), _d(body.end), user["id"], body.universe)
     container.system_repo.add_log(user["id"], f"data_{body.type}", body.symbol or "ALL",
                                   body.model_dump(), request.client.host)
     return {"job_id": job_id}
@@ -63,8 +69,10 @@ def bootstrap(container=Depends(get_container), user=Depends(require_admin)):
 
 
 @router.get("/cache/coverage")
-def coverage(container=Depends(get_container), user=Depends(require_admin)):
-    return {"rows": container.market_service.coverage(),
+def coverage(page: int = 1, size: int = 50, keyword: str = "",
+             container=Depends(get_container), user=Depends(require_admin)):
+    rows, total = container.market_repo.coverage_rows_page(page, size, keyword)
+    return {"rows": rows, "total": total,
             "storage_bytes": container.market_service.storage_bytes()}
 
 
