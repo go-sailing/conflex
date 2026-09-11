@@ -103,6 +103,14 @@ class BaseDataSource(ABC):
     def fetch_instruments(self) -> list[Instrument]:
         return []
 
+    def fetch_index_members(self, index_code: str) -> list[tuple[str, str]]:
+        """指数成分股，返回 [(symbol, name), ...]（symbol 为 600000.SH 风格）。
+
+        index_code 为交易所指数代码：000016 上证50 / 000300 沪深300 /
+        000905 中证500 / 000852 中证1000。默认不支持。
+        """
+        return []
+
     def fetch_calendar(self, start: date, end: date) -> list[date]:
         return []
 

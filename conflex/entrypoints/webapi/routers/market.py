@@ -1,24 +1,14 @@
-"""行情数据：数据源管理、更新任务、缓存浏览、K 线查询。"""
+"""行情数据：数据源管理、股票池、缓存浏览、K 线查询。"""
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import datetime
 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
 
 from conflex.entrypoints.webapi.deps import get_container, require_admin
 
 router = APIRouter(tags=["data"])
-
-
-class UpdateIn(BaseModel):
-    type: str = "update"           # update / repair
-    symbols: list[str] | None = None
-    symbol: str | None = None
-    universe: str | None = None    # all / hs300 / zz500 / zz1000 / star / chinext / main
-    start: str | None = None
-    end: str | None = None
 
 
 def _d(s: str | None):
@@ -46,22 +36,6 @@ def test_source(name: str, container=Depends(get_container), user=Depends(requir
     return {"ok": ok, "latency_ms": int((time.monotonic() - t0) * 1000)}
 
 
-@router.post("/data/jobs")
-def create_data_job(body: UpdateIn, request: Request, container=Depends(get_container),
-                    user=Depends(require_admin)):
-    if body.type == "repair":
-        if not body.symbol or not body.start:
-            raise HTTPException(400, "repair 需要 symbol 与 start")
-        job_id = container.market_service.submit_repair(
-            body.symbol, _d(body.start), _d(body.end) or date.today(), user["id"])
-    else:
-        job_id = container.market_service.submit_update(
-            body.symbols, _d(body.start), _d(body.end), user["id"], body.universe)
-    container.system_repo.add_log(user["id"], f"data_{body.type}", body.symbol or "ALL",
-                                  body.model_dump(), request.client.host)
-    return {"job_id": job_id}
-
-
 @router.post("/data/bootstrap")
 def bootstrap(container=Depends(get_container), user=Depends(require_admin)):
     hit = container.market_service.bootstrap()
@@ -76,11 +50,40 @@ def coverage(page: int = 1, size: int = 50, keyword: str = "",
             "storage_bytes": container.market_service.storage_bytes()}
 
 
+@router.get("/market/instrument/{symbol:path}")
+def instrument_info(symbol: str, container=Depends(get_container),
+                    user=Depends(require_admin)):
+    inst = container.market_repo.get_instrument(symbol)
+    if not inst:
+        raise HTTPException(404, "证券信息不存在")
+    cov = container.market_repo.coverage(symbol)
+    return {
+        "symbol": inst.symbol, "name": inst.name, "exchange": inst.exchange,
+        "board": inst.board, "is_st": inst.is_st,
+        "list_date": inst.list_date.isoformat(),
+        "delist_date": inst.delist_date.isoformat() if inst.delist_date else None,
+        "cache_start": cov[0].isoformat() if cov else None,
+        "cache_end": cov[1].isoformat() if cov else None,
+    }
+
+
 @router.get("/market/bars")
 def bars(symbol: str, start: str | None = None, end: str | None = None,
          adjust: str = "qfq", container=Depends(get_container),
          user=Depends(require_admin)):
     df = container.market_service.bars(symbol, _d(start), _d(end), adjust)
+    if df.empty:
+        return []
     out = df.copy()
     out["trade_date"] = pd.to_datetime(out["trade_date"]).dt.strftime("%Y-%m-%d")
-    return out.where(out.notna(), None).to_dict(orient="records")
+    # 逐列转 object 后再置空，避免 float 列上的 None 在 to_dict 时回退成 NaN；
+    # numpy 标量（np.bool_/np.int64 等）统一 .item() 转为原生类型
+    out = out.astype(object)
+    records = out.where(pd.notna(out), None).to_dict(orient="records")
+    for rec in records:
+        for k, v in list(rec.items()):
+            if isinstance(v, float) and pd.isna(v):
+                rec[k] = None
+            elif hasattr(v, "item"):
+                rec[k] = v.item()
+    return records

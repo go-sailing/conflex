@@ -64,10 +64,36 @@ class SystemRepository:
         d["result"] = json.loads(r["result_json"]) if r["result_json"] else None
         return d
 
-    def list_jobs(self, limit: int = 50) -> list[dict]:
-        return [dict(r) for r in self.db.query(
-            "SELECT id,kind,status,progress,stage,error,created_at,started_at,finished_at "
-            "FROM job ORDER BY id DESC LIMIT ?", (limit,))]
+    def list_jobs(self, limit: int = 50, kind: str | None = None,
+                  kinds: list[str] | None = None) -> list[dict]:
+        sql = ("SELECT id,kind,status,progress,stage,error,created_at,started_at,finished_at,"
+               "params_json,result_json "
+               "FROM job")
+        clauses: list[str] = []
+        params: list = []
+        if kind:
+            clauses.append("kind=?")
+            params.append(kind)
+        if kinds:
+            clauses.append(f"kind IN ({','.join('?' * len(kinds))})")
+            params.extend(kinds)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        out: list[dict] = []
+        for r in self.db.query(sql, tuple(params)):
+            d = dict(r)
+            try:
+                d["params"] = json.loads(r["params_json"]) if r["params_json"] else {}
+            except Exception:  # noqa: BLE001
+                d["params"] = {}
+            try:
+                d["result"] = json.loads(r["result_json"]) if r["result_json"] else None
+            except Exception:  # noqa: BLE001
+                d["result"] = None
+            out.append(d)
+        return out
 
     # ---- 操作日志 ----
     def add_log(self, user_id: int | None, action: str, target: str = "",

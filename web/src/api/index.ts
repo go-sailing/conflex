@@ -12,9 +12,9 @@ export const dataApi = {
   sources: () => http.get('/data-sources'),
   testSource: (name: string) => http.post(`/data-sources/${name}/test`),
   bootstrap: () => http.post('/data/bootstrap'),
-  createJob: (body: Record<string, any>) => http.post('/data/jobs', body),
   coverage: (params?: Record<string, any>) => http.get('/cache/coverage', { params }),
   bars: (params: Record<string, any>) => http.get('/market/bars', { params }),
+  instrument: (symbol: string) => http.get(`/market/instrument/${encodeURIComponent(symbol)}`),
   universes: () => http.get('/universes'),
 }
 
@@ -57,7 +57,8 @@ export const backtestApi = {
 }
 
 export const jobApi = {
-  list: (limit = 50) => http.get('/jobs', { params: { limit } }),
+  list: (limit = 50, kind?: string) =>
+    http.get('/jobs', { params: { limit, kind } }),
   get: (id: number) => http.get(`/jobs/${id}`),
   cancel: (id: number) => http.post(`/jobs/${id}/cancel`),
   logs: (id: number) => http.get(`/jobs/${id}/logs`),

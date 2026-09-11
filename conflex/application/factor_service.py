@@ -63,14 +63,51 @@ class FactorService:
         return out
 
     def analyze(self, name: str, panel: PanelData, horizon: int = 5,
-                groups: int = 10, params: dict | None = None) -> dict:
+                groups: int = 10, params: dict | None = None,
+                clip_start: date | str | None = None,
+                universe: str | None = None,
+                requested_count: int | None = None) -> dict:
         factor = self.compute(name, panel, params)
         close = panel.get("close")
         fwd = forward_returns(close, horizon)
+
+        # 面板可能为滚动窗口预留了 warmup（start 之前的行情），
+        # IC/分层统计只截取用户请求的分析区间
+        if clip_start is not None:
+            ts = pd.Timestamp(clip_start)
+            factor = factor.loc[factor.index >= ts]
+            fwd = fwd.loc[fwd.index >= ts]
+
+        # ---- 前置校验：数据是否足够 ----
+        n_rows = factor.shape[0] if factor.shape[0] else 0
+        factor_nan = factor.isna().sum().sum() / max(factor.shape[0] * factor.shape[1], 1)
+        fwd_nan = fwd.isna().sum().sum() / max(fwd.shape[0] * fwd.shape[1], 1)
+        warnings: list[str] = []
+        min_window = 20  # price_rev_20 等常用因子的最小窗口
+        if n_rows < min_window:
+            warnings.append(
+                f"行情面板仅 {n_rows} 个交易日，"
+                f"{name} 因子需要至少 {min_window} 天窗口才能计算。"
+                f"请扩大分析的开始日期范围（行情缺失部分会在分析前自动增量拉取）。"
+            )
+        if factor_nan >= 0.95:
+            warnings.append(
+                f"{name} 因子计算结果 {factor_nan:.0%} 为 NaN，"
+                f"可能是行情数据不足或因子参数不匹配。"
+            )
+        if fwd_nan >= 0.80:
+            warnings.append(
+                f"未来收益（预测{horizon}日）{fwd_nan:.0%} 为 NaN，"
+                f"面板尾部交易日不足 {horizon} 天。"
+            )
+
         ic = ic_series(factor, fwd)
         layered = layered_returns(factor, fwd, groups)
-        return {
+        result = {
             "factor": name,
+            "universe": universe or "all",
+            "requested_count": requested_count,
+            "panel_count": int(close.shape[1]),
             "horizon": horizon,
             "groups": groups,
             "summary": ic_summary(ic),
@@ -79,3 +116,6 @@ class FactorService:
             "layered_mean": (None if layered.empty else
                              {f"G{i+1}": float(v) for i, v in enumerate(layered.mean())}),
         }
+        if warnings:
+            result["warnings"] = warnings
+        return result

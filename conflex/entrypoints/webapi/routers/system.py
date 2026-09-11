@@ -17,9 +17,11 @@ _TERMINAL = {"succeeded", "failed", "cancelled"}
 
 
 @router.get("/jobs")
-def list_jobs(limit: int = 50, container=Depends(get_container),
+def list_jobs(limit: int = 50, kind: str | None = None,
+              container=Depends(get_container),
               user=Depends(get_current_user)):
-    return container.system_repo.list_jobs(limit)
+    """列出异步任务。kind 参数可用于按类型过滤（如 data_update / factor_analysis / backtest）。"""
+    return container.system_repo.list_jobs(limit, kind=kind)
 
 
 @router.get("/jobs/{job_id}")

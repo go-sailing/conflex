@@ -51,7 +51,7 @@ class _Job:
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
-_GLOBAL_KINDS = {"data_update", "data_repair", "bootstrap"}
+_GLOBAL_KINDS = {"data_update", "data_repair", "bootstrap", "factor_analysis"}
 _MAX_CONCURRENCY = {"backtest": 2}
 
 

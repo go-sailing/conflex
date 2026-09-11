@@ -41,6 +41,32 @@ export function useJob() {
       const token = localStorage.getItem('conflex_token') || ''
       es = new EventSource(`/api/v1/jobs/${jobId}/stream?token=${encodeURIComponent(token)}`)
 
+      function terminal() {
+        es?.close()
+        es = null
+      }
+
+      es.addEventListener('snapshot', (e: MessageEvent) => {
+        const d = JSON.parse(e.data)
+        state.value.progress = d.progress ?? state.value.progress
+        state.value.stage = d.stage ?? state.value.stage
+        state.value.status = d.status ?? state.value.status
+        // 如果任务已经是终态（比如刷新页面重连），直接 resolve/回调
+        if (d.status === 'succeeded') {
+          state.value.running = false
+          state.value.progress = 1
+          state.value.stage = d.stage || '完成'
+          state.value.result = d.result
+          terminal()
+          resolve(d.result)
+        } else if (d.status === 'failed') {
+          state.value.running = false
+          state.value.stage = d.stage || '失败'
+          state.value.error = d.error || '任务失败'
+          terminal()
+          reject(new Error(state.value.error))
+        }
+      })
       es.addEventListener('progress', (e: MessageEvent) => {
         const d = JSON.parse(e.data)
         state.value.progress = d.progress ?? state.value.progress
@@ -57,7 +83,7 @@ export function useJob() {
         state.value.progress = 1
         state.value.stage = '完成'
         state.value.result = d.result
-        cleanup()
+        terminal()
         resolve(d.result)
       })
       es.addEventListener('error', (e: any) => {
@@ -67,7 +93,7 @@ export function useJob() {
           state.value.running = false
           state.value.status = 'failed'
           state.value.error = d.error || '任务失败'
-          cleanup()
+          terminal()
           reject(new Error(state.value.error))
         }
       })

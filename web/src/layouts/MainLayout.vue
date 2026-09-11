@@ -5,13 +5,12 @@
         <el-icon><TrendCharts /></el-icon>
         <span>Conflex</span>
       </div>
-      <el-menu :default-active="$route.path" router background-color="#1f2d3d"
+      <el-menu :default-active="activeMenu" router background-color="#1f2d3d"
                text-color="#bfcbd9" active-text-color="#409eff">
         <el-menu-item index="/dashboard"><el-icon><DataLine /></el-icon><span>总览</span></el-menu-item>
         <el-sub-menu index="data">
           <template #title><el-icon><Coin /></el-icon><span>行情数据</span></template>
           <el-menu-item index="/data/sources">数据源管理</el-menu-item>
-          <el-menu-item index="/data/jobs">更新任务</el-menu-item>
           <el-menu-item index="/data/cache">缓存浏览</el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="factors">
@@ -51,11 +50,20 @@
 </template>
 
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 
+const route = useRoute()
 const router = useRouter()
 const user = useUserStore()
+
+// 详情类子路由高亮所属菜单
+const activeMenu = computed(() => {
+  if (route.path.startsWith('/data/cache/')) return '/data/cache'
+  if (/^\/backtests\/\d/.test(route.path)) return '/backtests'
+  return route.path
+})
 
 function logout() {
   user.logout()

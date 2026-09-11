@@ -25,6 +25,12 @@ CREATE TABLE IF NOT EXISTS cache_meta (
   PRIMARY KEY (symbol, freq, adj_type)
 );
 
+CREATE TABLE IF NOT EXISTS index_member (
+  index_code TEXT NOT NULL, symbol TEXT NOT NULL,
+  name TEXT, updated_at TEXT NOT NULL,
+  PRIMARY KEY (index_code, symbol)
+);
+
 CREATE TABLE IF NOT EXISTS data_source_stat (
   name TEXT PRIMARY KEY, enabled INTEGER DEFAULT 1, priority INTEGER,
   secret_ref TEXT, qps REAL, daily_quota INTEGER,

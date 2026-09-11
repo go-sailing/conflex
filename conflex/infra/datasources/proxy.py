@@ -153,6 +153,27 @@ class MarketDataProxy:
         if self.repo and hasattr(self.repo, "record_call"):
             self.repo.record_call(name, ok, latency, today)
 
+    # ---- 指数成分股（按需拉取，结果由仓储层缓存）----
+    def fetch_index_members(self, index_code: str) -> list[tuple[str, str]]:
+        """跨源拉取指数成分股 [(symbol, name)]，首个成功源即返回。"""
+        attempts: list[tuple[str, str]] = []
+        for cfg, src in self.sources:
+            if cfg is not None and not getattr(cfg, "enabled", True):
+                continue
+            if not self.breakers[src.name].allow():
+                attempts.append((src.name, "熔断中，跳过"))
+                continue
+            try:
+                members = src.fetch_index_members(index_code)
+                if members:
+                    self.breakers[src.name].record_success()
+                    return members
+                attempts.append((src.name, "不支持或返回空"))
+            except Exception as exc:  # noqa: BLE001
+                attempts.append((src.name, str(exc)))
+                self.breakers[src.name].record_failure()
+        raise AllSourcesExhausted(attempts)
+
     # ---- 基础数据引导 ----
     def bootstrap(self, start: date | None = None, end: date | None = None) -> str:
         """从首个可用源拉取证券列表与交易日历，返回命中源。"""

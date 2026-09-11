@@ -99,6 +99,35 @@ class ParquetStore:
         pq.write_table(pa.Table.from_pandas(df[["trade_date", "factor"]],
                                            preserve_index=False), path, compression="snappy")
 
+    def latest_bar(self, symbol: str) -> dict | None:
+        """读取最新一根日线（只打开年份最大的分区文件，取末行）。"""
+        d = self.root / "daily" / symbol
+        if not d.exists():
+            return None
+        files = sorted(d.glob("*.parquet"))
+        if not files:
+            return None
+        df = pq.read_table(files[-1]).to_pandas()
+        if df.empty:
+            return None
+        df = df.sort_values("trade_date")
+        row = df.iloc[-1]
+        pre_close = row.get("pre_close")
+        if pd.isna(pre_close) and len(df) >= 2:
+            pre_close = df.iloc[-2]["close"]  # 当日增量行缺失 pre_close 时用上一根收盘兜底
+        change_pct = None
+        if pd.notna(pre_close) and float(pre_close) > 0 and pd.notna(row.get("close")):
+            change_pct = round((float(row["close"]) / float(pre_close) - 1) * 100, 2)
+        return {
+            "trade_date": pd.Timestamp(row["trade_date"]).strftime("%Y-%m-%d"),
+            "close": (None if pd.isna(row.get("close")) else round(float(row["close"]), 4)),
+            "pre_close": (None if pd.isna(pre_close) else round(float(pre_close), 4)),
+            "change_pct": change_pct,
+            "volume": (None if pd.isna(row.get("volume")) else float(row["volume"])),
+            "amount": (None if pd.isna(row.get("amount")) else round(float(row["amount"]), 2)),
+            "turnover": (None if pd.isna(row.get("turnover")) else round(float(row["turnover"]), 3)),
+        }
+
     def symbols(self) -> list[str]:
         d = self.root / "daily"
         if not d.exists():

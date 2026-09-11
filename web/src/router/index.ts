@@ -9,8 +9,8 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: 'dashboard', name: 'dashboard', component: () => import('@/views/dashboard/Dashboard.vue'), meta: { title: '总览' } },
       { path: 'data/sources', name: 'data-sources', component: () => import('@/views/data/Sources.vue'), meta: { title: '数据源管理' } },
-      { path: 'data/jobs', name: 'data-jobs', component: () => import('@/views/data/DataJobs.vue'), meta: { title: '更新任务' } },
       { path: 'data/cache', name: 'data-cache', component: () => import('@/views/data/CacheBrowser.vue'), meta: { title: '缓存浏览' } },
+      { path: 'data/cache/:symbol', name: 'data-cache-detail', component: () => import('@/views/data/BarDetail.vue'), meta: { title: 'K线详情' } },
       { path: 'factors/library', name: 'factor-library', component: () => import('@/views/factors/Library.vue'), meta: { title: '因子库' } },
       { path: 'factors/analysis', name: 'factor-analysis', component: () => import('@/views/factors/Analysis.vue'), meta: { title: '因子分析' } },
       { path: 'factors/scores', name: 'factor-scores', component: () => import('@/views/factors/ScoreBoard.vue'), meta: { title: '选股榜单' } },

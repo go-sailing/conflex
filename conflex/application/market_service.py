@@ -1,14 +1,61 @@
-"""行情应用服务：引导、增量更新、缓存浏览（SDD 5.6）。"""
+"""行情应用服务：引导、股票池解析、按需增量拉取、缓存浏览（SDD 5.6）。"""
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from typing import Callable
 
 
 class MarketService:
+    # 指数成分股本地缓存有效期（天），过期后下次使用时自动刷新
+    INDEX_MEMBER_TTL_DAYS = 7
+
     def __init__(self, proxy, repo, job_manager=None):
         self.proxy = proxy
         self.repo = repo
         self.jobs = job_manager
+
+    # ---- 股票池解析 ----
+    def resolve_symbols(self, universe: str | None = None) -> list[str]:
+        """把股票池名称解析为股票代码列表。
+
+        板块池（all/main/chinext/star）直接查 instrument 表；
+        指数池（sz50/hs300/zz500/zz1000）读 index_member 缓存，
+        缓存不存在或超过 TTL 时自动从数据源拉取并落库。
+        """
+        name = universe or "all"
+        index_code = self.repo.INDEX_POOL_CODES.get(name)
+        if not index_code:
+            return self.repo.resolve_universe(name)
+        updated = self.repo.index_member_updated_at(index_code)
+        if updated is None or datetime.now() - updated > timedelta(
+                days=self.INDEX_MEMBER_TTL_DAYS):
+            members = self.proxy.fetch_index_members(index_code)
+            self.repo.replace_index_members(
+                index_code, members, datetime.now().isoformat(timespec="seconds"))
+        return self.repo.resolve_universe(name)
+
+    # ---- 按需增量拉取（缓存优先）----
+    def ensure_daily(self, symbols: list[str], start: date, end: date,
+                     on_progress: Callable[[int, int, str], None] | None = None,
+                     is_cancelled: Callable[[], bool] | None = None) -> dict:
+        """确保 symbols 在 [start, end] 的行情已在本地缓存。
+
+        逐票走 MarketDataProxy.get_daily（cache-first + next_gap 增量），
+        单票失败不中断；返回 {"ok": n, "failed": [(symbol, reason), ...]}。
+        """
+        ok, failed = 0, []
+        total = len(symbols)
+        for i, sym in enumerate(symbols):
+            if is_cancelled and is_cancelled():
+                break
+            try:
+                self.proxy.get_daily(sym, start, end)
+                ok += 1
+            except Exception as exc:  # noqa: BLE001
+                failed.append((sym, str(exc)))
+            if on_progress and ((i + 1) % 10 == 0 or i + 1 == total):
+                on_progress(i + 1, total, sym)
+        return {"ok": ok, "failed": failed}
 
     # ---- 同步基础操作 ----
     def bootstrap(self, years: int = 8) -> str:

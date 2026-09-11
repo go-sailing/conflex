@@ -61,6 +61,33 @@ class AkshareDataSource(BaseDataSource):
                                   board=board, list_date=date(2010, 1, 1)))
         return out
 
+    @guarded
+    def fetch_index_members(self, index_code: str) -> list[tuple[str, str]]:
+        """中证指数公司成分股（000016/000300/000905/000852）。"""
+        try:
+            import akshare as ak  # noqa
+        except ImportError:
+            return []
+        df = ak.index_stock_cons_csindex(symbol=index_code)
+        if df is None or df.empty:
+            return []
+        # 兼容不同 akshare 版本列名
+        cols = list(df.columns)
+        code_col = next((c for c in cols if "成分券代码" in c or c in ("code", "品种代码")), cols[0])
+        name_col = next((c for c in cols if "成分券名称" in c or c in ("name", "品种名称")), None)
+        exch_col = next((c for c in cols if "交易所" in c), None)
+        out: list[tuple[str, str]] = []
+        for _, r in df.iterrows():
+            code = str(r[code_col]).zfill(6)
+            nm = str(r[name_col]) if name_col else ""
+            exch = str(r[exch_col]) if exch_col else ""
+            if "上海" in exch or code.startswith(("6", "9", "5")):
+                symbol = f"{code}.SH"
+            else:
+                symbol = f"{code}.SZ"
+            out.append((symbol, nm))
+        return out
+
     def fetch_calendar(self, start: date, end: date) -> list[date]:
         try:
             import akshare as ak  # noqa

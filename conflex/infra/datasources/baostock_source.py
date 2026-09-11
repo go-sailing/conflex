@@ -150,6 +150,34 @@ class BaostockDataSource(BaseDataSource):
                                   exchange=exchange, board=board, list_date=list_date))
         return out
 
+    @guarded
+    def fetch_index_members(self, index_code: str) -> list[tuple[str, str]]:
+        """baostock 仅支持沪深300（000300）与中证500（000905）。"""
+        try:
+            import baostock as bs  # noqa
+        except ImportError:
+            return []
+        if index_code == "000300":
+            query = bs.query_hs300_stocks
+        elif index_code == "000905":
+            query = bs.query_zz500_stocks
+        else:
+            return []
+        self._ensure_login()
+        rs = query()
+        if rs.error_code != "0":
+            return []
+        rows = []
+        while rs.next():
+            rows.append(rs.get_row_data())
+        if not rows:
+            return []
+        df = pd.DataFrame(rows, columns=rs.fields)
+        out: list[tuple[str, str]] = []
+        for _, r in df.iterrows():
+            out.append((self._from_bs_code(r["code"]), r.get("code_name", "")))
+        return out
+
     def fetch_calendar(self, start: date, end: date) -> list[date]:
         try:
             import baostock as bs  # noqa

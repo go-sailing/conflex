@@ -101,16 +101,41 @@ class MarketRepository:
         where = ""
         params: list = []
         if keyword:
-            where = "WHERE symbol LIKE ?"
-            params.append(f"%{keyword}%")
+            where = "WHERE c.symbol LIKE ? OR i.name LIKE ?"
+            params.extend([f"%{keyword}%", f"%{keyword}%"])
         total = self.db.query_one(
-            f"SELECT COUNT(*) as cnt FROM cache_meta {where}", tuple(params))["cnt"]
+            "SELECT COUNT(*) as cnt FROM cache_meta c "
+            "LEFT JOIN instrument i ON i.symbol = c.symbol " + where,
+            tuple(params))["cnt"]
         offset = (page - 1) * size
         rows = [dict(r) for r in self.db.query(
-            f"SELECT symbol,start_date,end_date,is_final,source,updated_at "
-            f"FROM cache_meta {where} ORDER BY symbol LIMIT ? OFFSET ?",
+            "SELECT c.symbol AS symbol, c.start_date, c.end_date, c.is_final, "
+            "c.source, c.updated_at, i.name AS name, i.board AS board "
+            "FROM cache_meta c LEFT JOIN instrument i ON i.symbol = c.symbol "
+            f"{where} ORDER BY c.symbol LIMIT ? OFFSET ?",
             tuple(params) + (size, offset))]
+        # 附带最新一根日线（最新价/涨跌幅），每页仅少量行，读取成本可控
+        for r in rows:
+            bar = self.store.latest_bar(r["symbol"])
+            if bar:
+                r["last_date"] = bar["trade_date"]
+                r["last_close"] = bar.get("close")
+                r["change_pct"] = bar.get("change_pct")
+            else:
+                r["last_date"] = r["last_close"] = r["change_pct"] = None
         return rows, total
+
+    def get_instrument(self, symbol: str) -> Instrument | None:
+        row = self.db.query_one("SELECT * FROM instrument WHERE symbol=?", (symbol,))
+        if not row:
+            return None
+        return Instrument(
+            symbol=row["symbol"], name=row["name"], exchange=row["exchange"],
+            board=row["board"] or "main",
+            list_date=date.fromisoformat(row["list_date"]),
+            delist_date=date.fromisoformat(row["delist_date"]) if row["delist_date"] else None,
+            is_st=bool(row["is_st"]),
+        )
 
     def symbols_on_disk(self) -> list[str]:
         return self.store.symbols()
@@ -155,52 +180,85 @@ class MarketRepository:
         return [r["symbol"] for r in rows]
 
     # ---- 股票池 ----
+    # 板块池按交易所代码段精确筛选（instrument.board 由数据源引导时生成，
+    # 对 ETF/指数等并不可靠，故板块判定一律走代码段）；
+    # 指数池（sz50/hs300/zz500/zz1000）取 index_member 表中缓存的真实成分股。
     UNIVERSES: dict[str, str] = {
         "all": "全部A股",
+        "main": "主板",
+        "chinext": "创业板",
+        "star": "科创板",
+        "sz50": "上证50",
         "hs300": "沪深300",
         "zz500": "中证500",
         "zz1000": "中证1000",
-        "star": "科创板",
-        "chinext": "创业板",
-        "main": "主板",
     }
 
+    # 股票池名 → 中证/上证指数代码
+    INDEX_POOL_CODES: dict[str, str] = {
+        "sz50": "000016",
+        "hs300": "000300",
+        "zz500": "000905",
+        "zz1000": "000852",
+    }
+
+    @staticmethod
+    def is_a_share(symbol: str) -> bool:
+        """按代码段判断是否为沪深京 A 股个股（排除指数/ETF/可转债等）。"""
+        code, _, exch = symbol.partition(".")
+        if exch == "SH":
+            return code[:3] in ("600", "601", "603", "605", "688", "689")
+        if exch == "SZ":
+            return code[:3] in ("000", "001", "002", "003", "300", "301", "302")
+        if exch == "BJ":
+            return code[:1] in ("8", "4", "9")
+        return False
+
     def resolve_universe(self, name: str, day: date | None = None) -> list[str]:
-        """根据预定义池或代码前缀返回股票列表。"""
+        """根据预定义池返回存续股票代码列表（仅个股，不含指数/基金/债券）。"""
         day = day or date.today()
-        base_sql = "SELECT symbol FROM instrument WHERE list_date<=? AND (delist_date IS NULL OR delist_date>?)"
+        base_sql = ("SELECT symbol FROM instrument "
+                    "WHERE list_date<=? AND (delist_date IS NULL OR delist_date>?)")
         params: list = [day.isoformat(), day.isoformat()]
 
+        def listed(clause: str | None = None) -> list[str]:
+            sql = base_sql + (f" AND ({clause})" if clause else "")
+            return [r["symbol"] for r in self.db.query(sql, tuple(params))]
+
+        if name in self.INDEX_POOL_CODES:
+            index_code = self.INDEX_POOL_CODES[name]
+            rows = self.db.query(
+                "SELECT symbol FROM index_member WHERE index_code=?", (index_code,))
+            return [r["symbol"] for r in rows]
         if name == "all":
-            rows = self.db.query(base_sql, tuple(params))
-        elif name == "hs300":
-            rows = self.db.query(
-                base_sql + " AND symbol LIKE '6%' OR symbol LIKE '000%' OR symbol LIKE '300%'",
-                tuple(params),
-            )
-        elif name == "zz500":
-            rows = self.db.query(
-                base_sql + " AND (symbol LIKE '002%' OR symbol LIKE '300%' OR symbol LIKE '60%')",
-                tuple(params),
-            )
-        elif name == "zz1000":
-            rows = self.db.query(
-                base_sql + " AND (symbol LIKE '002%' OR symbol LIKE '300%' OR symbol LIKE '301%' "
-                "OR symbol LIKE '600%' OR symbol LIKE '601%' OR symbol LIKE '603%')",
-                tuple(params),
-            )
-        elif name == "star":
-            rows = self.db.query(base_sql + " AND (symbol LIKE '688%' OR symbol LIKE '689%')", tuple(params))
-        elif name == "chinext":
-            rows = self.db.query(base_sql + " AND (symbol LIKE '300%' OR symbol LIKE '301%')", tuple(params))
-        elif name == "main":
-            rows = self.db.query(
-                base_sql + " AND (symbol LIKE '60%' OR symbol LIKE '000%' OR symbol LIKE '001%')",
-                tuple(params),
-            )
-        else:
-            rows = self.db.query(base_sql, tuple(params))
-        return [r["symbol"] for r in rows]
+            return [s for s in listed() if self.is_a_share(s)]
+        if name == "main":
+            return listed(
+                "(symbol LIKE '600%.SH' OR symbol LIKE '601%.SH' OR symbol LIKE '603%.SH' "
+                "OR symbol LIKE '605%.SH' OR symbol LIKE '000%.SZ' OR symbol LIKE '001%.SZ' "
+                "OR symbol LIKE '002%.SZ' OR symbol LIKE '003%.SZ')")
+        if name == "star":
+            return listed("symbol LIKE '688%.SH' OR symbol LIKE '689%.SH'")
+        if name == "chinext":
+            return listed("symbol LIKE '300%.SZ' OR symbol LIKE '301%.SZ' OR symbol LIKE '302%.SZ'")
+        # 未知名称回退全部 A 股
+        return [s for s in listed() if self.is_a_share(s)]
+
+    # ---- 指数成分股缓存 ----
+    def replace_index_members(self, index_code: str,
+                              members: list[tuple[str, str]], updated_at: str) -> None:
+        with self.db.lock:
+            self.db.execute("DELETE FROM index_member WHERE index_code=?", (index_code,))
+            self.db.executemany(
+                "INSERT INTO index_member(index_code,symbol,name,updated_at) VALUES(?,?,?,?)",
+                [(index_code, sym, nm, updated_at) for sym, nm in members])
+
+    def index_member_updated_at(self, index_code: str) -> datetime | None:
+        row = self.db.query_one(
+            "SELECT MAX(updated_at) AS u FROM index_member WHERE index_code=?", (index_code,))
+        if not row or not row["u"]:
+            return None
+        return datetime.fromisoformat(row["u"])
 
     # ---- calendar ----
     def load_calendar(self, start: date | None = None, end: date | None = None) -> list[date]:
