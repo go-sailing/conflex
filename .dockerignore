@@ -1,0 +1,30 @@
+# 运行时数据与虚拟环境
+/data/
+/.venv/
+/venv/
+/env/
+
+# 前端源码与构建缓存（镜像使用仓库内置的 conflex/resources/web_dist 产物）
+/web/node_modules/
+/web/dist/
+
+# 测试与文档（不进入运行镜像）
+/tests/
+/docs/
+
+# Git 与 IDE
+/.git/
+/.idea/
+/.vscode/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 本地配置、密钥与日志
+conflex.yaml
+.env
+.env.*
+*.log

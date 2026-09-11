@@ -1,0 +1,37 @@
+services:
+  conflex:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: conflex:latest
+    container_name: conflex
+    restart: unless-stopped
+    ports:
+      # 宿主机端口:容器端口；如需只允许本机访问可改为 "127.0.0.1:8899:8899"
+      - "8899:8899"
+    environment:
+      TZ: Asia/Shanghai
+      CONFLEX_DATA_DIR: /data
+      CONFLEX_WEB_PORT: "8899"
+      # 可选：在宿主机 shell / .env 中提供；留空时系统会在数据卷中生成持久化随机密钥
+      CONFLEX_SECRET_KEY: ${CONFLEX_SECRET_KEY:-}
+      # 可选：Tushare 数据源 token（不配置则自动使用腾讯/新浪/AKShare 等免费源）
+      TUSHARE_TOKEN: ${TUSHARE_TOKEN:-}
+      # 首次启动是否自动执行 conflex init 引导证券列表与交易日历（true/false）
+      CONFLEX_AUTO_INIT: "true"
+      # 引导超时秒数：超时后仍会启动 Web，可在界面内重试数据更新
+      CONFLEX_INIT_TIMEOUT: "300"
+    volumes:
+      # SQLite 元数据库、Parquet 行情缓存、因子缓存、日志均持久化到命名卷
+      - conflex-data:/data
+    # 健康检查已在 Dockerfile 中定义（GET /api/v1/health）
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8899/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+
+volumes:
+  conflex-data:
+    name: conflex-data
